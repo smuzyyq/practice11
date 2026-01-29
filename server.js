@@ -27,7 +27,6 @@ MongoClient.connect(MONGO_URL)
   .catch(err => console.error("Mongo error:", err));
 
 
-// ROUTES
 
 app.get("/", (req, res) => {
   res.json({
@@ -112,10 +111,18 @@ app.post("/api/products", async (req, res) => {
   });
 });
 
+app.get("/version", (req, res) => {
+  res.json({
+    version: "1.1",
+    updatedAt: "2026-01-29"
+  });
+});
 
 app.use((req, res) => {
   res.status(404).json({ error: "API endpoint not found" });
 });
+
+
 
 
 app.listen(PORT, () => {
