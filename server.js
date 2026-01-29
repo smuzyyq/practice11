@@ -1,10 +1,13 @@
+require("dotenv").config();
+
 const express = require("express");
 const { MongoClient, ObjectId } = require("mongodb");
 
+const app = express();
+
 const PORT = process.env.PORT || 3000;
 const MONGO_URL = process.env.MONGO_URI;
-
-require("dotenv").config();
+const DB_NAME = "shop";
 
 app.use(express.json());
 
@@ -21,17 +24,20 @@ MongoClient.connect(MONGO_URL)
     products = db.collection("products");
     console.log("MongoDB connected");
   })
-  .catch(err => console.error(err));
+  .catch(err => console.error("Mongo error:", err));
 
+
+// ROUTES
 
 app.get("/", (req, res) => {
   res.json({
     links: [
       "/api/products",
-      "/api/products/1"
+      "/api/products/:id"
     ]
   });
 });
+
 
 app.get("/api/products", async (req, res) => {
   const { sortBy, order, category, minPrice, maxPrice, fields } = req.query;
@@ -39,9 +45,8 @@ app.get("/api/products", async (req, res) => {
   const filter = {};
 
   if (category) {
-  filter.category = { $regex: `^${category}$`, $options: "i" };
-}
-
+    filter.category = { $regex: `^${category}$`, $options: "i" };
+  }
 
   if (minPrice || maxPrice) {
     filter.price = {};
@@ -90,6 +95,7 @@ app.get("/api/products/:id", async (req, res) => {
   res.json(product);
 });
 
+
 app.post("/api/products", async (req, res) => {
   const { name, price, category } = req.body;
 
@@ -106,10 +112,12 @@ app.post("/api/products", async (req, res) => {
   });
 });
 
+
 app.use((req, res) => {
   res.status(404).json({ error: "API endpoint not found" });
 });
 
+
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
