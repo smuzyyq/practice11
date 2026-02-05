@@ -12,103 +12,155 @@ const DB_NAME = "shop";
 app.use(express.json());
 
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.url}`);
+  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
   next();
 });
 
-let db, items; 
+let db;
+let products;
+let items;
 
-MongoClient.connect(MONGO_URL)
-  .then(client => {
+async function connectDB() {
+  try {
+    const client = await MongoClient.connect(MONGO_URL);
     db = client.db(DB_NAME);
-    items = db.collection("items"); 
-    console.log("MongoDB connected");
-  })
-  .catch(err => console.error("Mongo error:", err));
+
+    products = db.collection("products");
+    items = db.collection("items");
+
+    console.log("✅ MongoDB connected");
+  } catch (err) {
+    console.error("❌ Mongo connection error:", err);
+  }
+}
+
+connectDB();
 
 app.get("/", (req, res) => {
   res.json({
-    links: ["/api/items", "/api/items/:id"]
+    endpoints: [
+      "/api/products",
+      "/api/items",
+      "/version"
+    ]
   });
 });
 
-app.get("/api/items", async (req, res) => {
+
+
+app.get("/api/products", async (req, res) => {
   try {
-    const { sortBy, order, category, minPrice, maxPrice, fields } = req.query;
+    if (!products) return res.status(500).json({ error: "DB not ready" });
 
-    const filter = {};
-
-    if (category) {
-      filter.category = { $regex: `^${category}$`, $options: "i" };
-    }
-
-    if (minPrice || maxPrice) {
-      filter.price = {};
-      if (minPrice) filter.price.$gte = Number(minPrice);
-      if (maxPrice) filter.price.$lte = Number(maxPrice);
-    }
-
-    const sort = {};
-    if (sortBy) {
-      sort[sortBy] = order === "desc" ? -1 : 1;
-    }
-
-    let projection = {};
-    if (fields) {
-      fields.split(",").forEach(field => {
-        projection[field.trim()] = 1;
-      });
-    }
-
-    const itemsList = await items
-      .find(filter)
-      .project(projection)
-      .sort(sort)
-      .toArray();
+    const list = await products.find().toArray();
 
     res.json({
-      count: itemsList.length,
-      items: itemsList
+      count: list.length,
+      products: list
     });
-  } catch (err) {
+
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/products/:id", async (req, res) => {
+  try {
+    if (!products) return res.status(500).json({ error: "DB not ready" });
+
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
+
+    const product = await products.findOne({
+      _id: new ObjectId(id)
+    });
+
+    if (!product)
+      return res.status(404).json({ error: "Product not found" });
+
+    res.json(product);
+
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/products", async (req, res) => {
+  try {
+    if (!products) return res.status(500).json({ error: "DB not ready" });
+
+    const { name, price, category } = req.body;
+
+    if (!name || price === undefined || !category)
+      return res.status(400).json({ error: "Missing fields" });
+
+    const newProduct = { name, price, category };
+
+    const result = await products.insertOne(newProduct);
+
+    res.status(201).json({
+      _id: result.insertedId,
+      ...newProduct
+    });
+
+  } catch {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+
+app.get("/api/items", async (req, res) => {
+  try {
+    if (!items) return res.status(500).json({ error: "DB not ready" });
+
+    const list = await items.find().toArray();
+
+    res.json({
+      count: list.length,
+      items: list
+    });
+
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 });
 
 app.get("/api/items/:id", async (req, res) => {
   try {
+    if (!items) return res.status(500).json({ error: "DB not ready" });
+
     const { id } = req.params;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid item id" });
-    }
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
 
-    const item = await items.findOne({ _id: new ObjectId(id) });
+    const item = await items.findOne({
+      _id: new ObjectId(id)
+    });
 
-    if (!item) {
+    if (!item)
       return res.status(404).json({ error: "Item not found" });
-    }
 
     res.json(item);
-  } catch (err) {
+
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 });
 
 app.post("/api/items", async (req, res) => {
   try {
-    const { name, price, category } = req.body;
+    if (!items) return res.status(500).json({ error: "DB not ready" });
 
-    if (!name || price === undefined || !category) {
-      return res.status(400).json({ error: "Missing required fields: name, price, category" });
-    }
+    const { name, price } = req.body;
 
-    const newItem = {
-      name,
-      price: Number(price),
-      category,
-      createdAt: new Date()
-    };
+    if (!name || price === undefined)
+      return res.status(400).json({ error: "Missing fields" });
+
+    const newItem = { name, price };
 
     const result = await items.insertOne(newItem);
 
@@ -116,106 +168,98 @@ app.post("/api/items", async (req, res) => {
       _id: result.insertedId,
       ...newItem
     });
-  } catch (err) {
+
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 });
 
 app.put("/api/items/:id", async (req, res) => {
   try {
+    if (!items) return res.status(500).json({ error: "DB not ready" });
+
     const { id } = req.params;
+    const { name, price } = req.body;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid item id" });
-    }
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
 
-    const { name, price, category } = req.body;
+    if (!name || price === undefined)
+      return res.status(400).json({ error: "Missing fields" });
 
-    if (!name || price === undefined || !category) {
-      return res.status(400).json({ error: "Missing required fields for full update" });
-    }
-
-    const updatedItem = {
-      name,
-      price: Number(price),
-      category,
-      updatedAt: new Date()
-    };
-
-    const result = await items.findOneAndUpdate(
+    const result = await items.replaceOne(
       { _id: new ObjectId(id) },
-      { $set: updatedItem },
-      { returnDocument: "after" }
+      { name, price }
     );
 
-    if (!result.value) {
+    if (result.matchedCount === 0)
       return res.status(404).json({ error: "Item not found" });
-    }
 
-    res.json(result.value);
-  } catch (err) {
+    res.json({ message: "Item updated" });
+
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 });
 
 app.patch("/api/items/:id", async (req, res) => {
   try {
+    if (!items) return res.status(500).json({ error: "DB not ready" });
+
     const { id } = req.params;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid item id" });
-    }
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
 
-    if (Object.keys(req.body).length === 0) {
-      return res.status(400).json({ error: "No fields provided for update" });
-    }
-
-    const updateData = { ...req.body };
-    if (updateData.price !== undefined) {
-      updateData.price = Number(updateData.price);
-    }
-    updateData.updatedAt = new Date();
-
-    const result = await items.findOneAndUpdate(
+    const result = await items.updateOne(
       { _id: new ObjectId(id) },
-      { $set: updateData },
-      { returnDocument: "after" }
+      { $set: req.body }
     );
 
-    if (!result.value) {
+    if (result.matchedCount === 0)
       return res.status(404).json({ error: "Item not found" });
-    }
 
-    res.json(result.value);
-  } catch (err) {
+    res.json({ message: "Item patched" });
+
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 });
 
 app.delete("/api/items/:id", async (req, res) => {
   try {
+    if (!items) return res.status(500).json({ error: "DB not ready" });
+
     const { id } = req.params;
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).json({ error: "Invalid item id" });
-    }
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
 
-    const result = await items.deleteOne({ _id: new ObjectId(id) });
+    const result = await items.deleteOne({
+      _id: new ObjectId(id)
+    });
 
-    if (result.deletedCount === 0) {
+    if (result.deletedCount === 0)
       return res.status(404).json({ error: "Item not found" });
-    }
 
-    res.status(204).send(); 
-  } catch (err) {
+    res.status(204).send();
+
+  } catch {
     res.status(500).json({ error: "Server error" });
   }
 });
 
+app.get("/version", (req, res) => {
+  res.json({
+    version: "1.2",
+    updatedAt: "2026-02-05"
+  });
+});
+
 app.use((req, res) => {
-  res.status(404).json({ error: "API endpoint not found" });
+  res.status(404).json({ error: "Endpoint not found" });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
