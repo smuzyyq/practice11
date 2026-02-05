@@ -46,6 +46,18 @@ app.get("/", (req, res) => {
   });
 });
 
+const checkApiKey = (req, res, next) => {
+  const key = req.headers["x-api-key"];
+
+  if (!key || key !== process.env.API_KEY) {
+    return res.status(401).json({
+      error: "Unauthorized"
+    });
+  }
+
+  next();
+};
+
 
 
 app.get("/api/products", async (req, res) => {
@@ -151,7 +163,7 @@ app.get("/api/items/:id", async (req, res) => {
   }
 });
 
-app.post("/api/items", async (req, res) => {
+app.post("/api/items", checkApiKey, async (req, res) => {
   try {
     if (!items) return res.status(500).json({ error: "DB not ready" });
 
@@ -174,7 +186,7 @@ app.post("/api/items", async (req, res) => {
   }
 });
 
-app.put("/api/items/:id", async (req, res) => {
+app.put("/api/items/:id", checkApiKey, async (req, res) => {
   try {
     if (!items) return res.status(500).json({ error: "DB not ready" });
 
@@ -202,7 +214,8 @@ app.put("/api/items/:id", async (req, res) => {
   }
 });
 
-app.patch("/api/items/:id", async (req, res) => {
+app.patch("/api/items/:id", checkApiKey, async (req, res) => {
+
   try {
     if (!items) return res.status(500).json({ error: "DB not ready" });
 
@@ -226,7 +239,8 @@ app.patch("/api/items/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/items/:id", async (req, res) => {
+app.delete("/api/items/:id", checkApiKey, async (req, res) => {
+
   try {
     if (!items) return res.status(500).json({ error: "DB not ready" });
 
